@@ -28,7 +28,7 @@ Passtoken can be run [standalone](#standalone) or [embeded](#embedding) into oth
 
 ### Rust
 
-For embeding into rust, it is as simple as including the library in you `Cargo.toml`
+For embeding into rust, it is as simple as including the library in your projects `Cargo.toml`
 
 ### C/C++
 
