@@ -20,7 +20,7 @@ Passtoken can be run [standalone](#standalone) or [embeded](#embedding) into oth
 ### Steps
 
 - Make sure you have both cargo and rustc installed.
-- Run `cargo build --release` to build a release binary.
+- Run `cargo build --release -p server` to build a release binary.
 - The final binary will be located at `target/release/passtoken._` The file extension will be different depending on what operating system you build for.
 - When running the binary, make sure to create a `.env` file with `POSTGRES_URL` as the url to your postgres database.
 
@@ -32,7 +32,9 @@ For embeding into rust, it is as simple as including the library in your project
 
 ### C/C++
 
-WIP
+To build the C/C++ bindings, compile the `c_bindings` project with `cargo build --release -p c_bindings`
+
+The bindings will be in the `include` directory, and the library file will be in `target/release/libc_bindings._` depending on what operating system you build for and what type of library you build. By default the c_bindings compile to a static library. To change it to a dynamic library, in `c_bindings/Cargo.toml` change `["staticlib"]` to `["cdylib"]`
 
 ### Python
 
