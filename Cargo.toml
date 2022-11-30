@@ -2,4 +2,5 @@
 members = [
     "core",
     "server",
+    "c_bindings",
 ]

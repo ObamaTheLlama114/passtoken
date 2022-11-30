@@ -1,0 +1,14 @@
+[package]
+name = "c_bindings"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+core = { path = "../core" }
+tokio = { version = "1.22.0", features = ["full"] }
+
+[build-dependencies]
+cbindgen = "0.24.3"
