@@ -1,22 +1,16 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-
 use rand::{distributions::Alphanumeric, Rng};
+use redis::Commands;
 use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
 
 use super::error::AuthError;
-
-pub type TokenList = Arc<Mutex<HashMap<String, (i32, i32)>>>;
 
 pub(crate) async fn get_pool(postgres_url: String) -> Result<Pool<Postgres>, AuthError> {
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&postgres_url)
         .await
-        .or_else(|x| Err(AuthError::DatabaseError(x)))?;
+        .or_else(|x| Err(AuthError::PostgresError(x)))?;
     init_db(&pool).await.unwrap();
     Ok(pool)
 }
@@ -34,7 +28,7 @@ pub(crate) async fn init_db(pool: &Pool<Postgres>) -> Result<(), AuthError> {
     .await
     {
         Ok(ok) => ok,
-        Err(err) => return Err(AuthError::DatabaseError(err)),
+        Err(err) => return Err(AuthError::PostgresError(err)),
     };
     Ok(())
 }
@@ -50,20 +44,20 @@ pub(crate) async fn connect(
 ) -> Result<sqlx::pool::PoolConnection<sqlx::Postgres>, AuthError> {
     match pool.acquire().await {
         Ok(conn) => Ok(conn),
-        Err(err) => Err(AuthError::DatabaseError(err)),
+        Err(err) => Err(AuthError::PostgresError(err)),
     }
 }
 
-pub(crate) fn generate_token(token_list: &TokenList) -> Result<String, AuthError> {
-    let mut token = rand::thread_rng()
+pub(crate) fn generate_token(redis: &mut redis::Client) -> Result<String, AuthError> {
+    let mut token: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(32)
         .map(char::from)
         .collect();
-    while token_list
-        .lock()
-        .or(Err(AuthError::UnableToAquireTokenListLock))?
-        .contains_key(&token)
+    while redis
+        .get(token.clone())
+        .or_else(|x| Err(AuthError::RedisError(x)))
+        .and_then(|x: Option<i32>| Ok(x.is_some()))?
     {
         token = rand::thread_rng()
             .sample_iter(&Alphanumeric)

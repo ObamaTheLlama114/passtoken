@@ -1,4 +1,4 @@
-use core::{init_auth, AuthError};
+use core::init_auth;
 use std::{
     env,
     process::exit,
@@ -22,16 +22,25 @@ async fn main() {
     });
     // Create an auth object and store it in an ARC
     let auth = Arc::new(Mutex::new(
-        init_auth(match env::var("POSTGRES_URL") {
-            Ok(url) => url,
-            Err(_) => {
-                println!("No POSTGRES_URL env var found, using default");
-                "postgresql://postgres:postgres@localhost:5432".to_string()
-            }
-        })
+        init_auth(
+            match env::var("POSTGRES_URL") {
+                Ok(url) => url,
+                Err(_) => {
+                    println!("No POSTGRES_URL env var found, using default");
+                    "postgresql://postgres:postgres@localhost:5432".to_string()
+                }
+            },
+            match env::var("REDIS_URL") {
+                Ok(url) => url,
+                Err(_) => {
+                    println!("No REDIS_URL env var found, using default");
+                    "postgresql://postgres:postgres@localhost:5432".to_string()
+                }
+            },
+        )
         .await
         .unwrap_or_else(|x| {
-            println!("Could not initialize auth: {}", to_error_message(&x));
+            println!("Could not initialize auth: {}", x.to_error_message());
             exit(1);
         }),
     ));
@@ -53,21 +62,6 @@ async fn main() {
     .run()
     .await
     .unwrap();
-}
-
-// Convert an AuthError to an error message string
-pub fn to_error_message(err: &AuthError) -> &'static str {
-    const SERVER_SIDE_ERROR_MESSAGE: &str =
-        "An error occured while processing your request. Please try again later.";
-    match err {
-        AuthError::UserAlreadyExists => "User already exists",
-        AuthError::UserDoesNotExist => "User does not exist",
-        AuthError::IncorrectUsernameOrPassword => "Incorrect username or password",
-        AuthError::InvalidToken => "Invalid token",
-        AuthError::TokenDoesNotExist => "Token does not exist",
-        AuthError::UnableToAquireTokenListLock => SERVER_SIDE_ERROR_MESSAGE,
-        AuthError::DatabaseError(_) => SERVER_SIDE_ERROR_MESSAGE,
-    }
 }
 
 // Structs for the handlers to represent JSON data in the request body
@@ -99,9 +93,9 @@ mod data_structs {
     #[derive(Deserialize)]
     pub(crate) struct UpdateUserData {
         pub token: String,
-        pub filter: String,
         pub email: Option<String>,
         pub password: Option<String>,
+        pub logout: Option<bool>,
     }
 
     #[derive(Deserialize)]
@@ -109,12 +103,12 @@ mod data_structs {
         pub filter: String,
         pub email: Option<String>,
         pub password: Option<String>,
+        pub logout: Option<bool>,
     }
 
     #[derive(Deserialize)]
     pub(crate) struct DeleteUserData {
         pub token: String,
-        pub filter: String,
     }
 
     #[derive(Deserialize)]
@@ -127,6 +121,7 @@ use data_structs::*;
 // Handlers for the web server
 mod handlers {
     use core::*;
+    use std::collections::HashMap;
 
     use crate::*;
 
@@ -139,7 +134,7 @@ mod handlers {
         let mut auth = auth_data.lock().unwrap();
         match login(&mut auth, login_data.email, login_data.password).await {
             Ok(x) => HttpResponse::Ok().body(x),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 
@@ -152,7 +147,7 @@ mod handlers {
         let logout_data = logout_data.into_inner();
         match logout(&mut auth, logout_data.token) {
             Ok(_) => HttpResponse::Ok().body(""),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 
@@ -161,11 +156,20 @@ mod handlers {
         auth_data: Data<Arc<Mutex<Auth>>>,
         token_data: web::Json<TokenVerifyData>,
     ) -> HttpResponse {
-        let auth = auth_data.lock().unwrap();
+        let mut auth = auth_data.lock().unwrap();
         let token_data = token_data.into_inner();
-        match verify_token(&auth, token_data.token).await {
-            Ok(x) => HttpResponse::Ok().body(if x { "valid" } else { "invalid" }),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+        match verify_token(&mut auth, token_data.token).await {
+            Ok(x) => {
+                if x != "" {
+                    HttpResponse::Ok().json(HashMap::from([("email", x)]))
+                } else {
+                    HttpResponse::BadRequest()
+                        .json(HashMap::from([("error", "Invalid token".to_string())]))
+                }
+            }
+            Err(x) => {
+                HttpResponse::BadRequest().json(HashMap::from([("error", x.to_error_message())]))
+            }
         }
     }
 
@@ -178,7 +182,7 @@ mod handlers {
         let mut auth = auth_data.lock().unwrap();
         match create_user(&mut auth, register_data.email, register_data.password).await {
             Ok(_) => HttpResponse::Ok().body(""),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 
@@ -192,14 +196,14 @@ mod handlers {
         match update_user(
             &mut auth,
             update_data.token,
-            update_data.filter,
             update_data.email,
             update_data.password,
+            update_data.logout.unwrap_or(false),
         )
         .await
         {
             Ok(_) => HttpResponse::Ok().body(""),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 
@@ -210,9 +214,9 @@ mod handlers {
     ) -> HttpResponse {
         let delete_data = delete_data.into_inner();
         let mut auth = auth_data.lock().unwrap();
-        match delete_user(&mut auth, delete_data.token, delete_data.filter).await {
+        match delete_user(&mut auth, delete_data.token).await {
             Ok(_) => HttpResponse::Ok().body(""),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 
@@ -228,11 +232,12 @@ mod handlers {
             update_data.filter,
             update_data.email,
             update_data.password,
+            update_data.logout.unwrap_or(false),
         )
         .await
         {
             Ok(_) => HttpResponse::Ok().body(""),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 
@@ -245,7 +250,7 @@ mod handlers {
         let mut auth = auth_data.lock().unwrap();
         match admin_delete_user(&mut auth, delete_data.filter).await {
             Ok(_) => HttpResponse::Ok().body(""),
-            Err(x) => HttpResponse::BadRequest().body(to_error_message(&x)),
+            Err(x) => HttpResponse::BadRequest().body(x.to_error_message()),
         }
     }
 }

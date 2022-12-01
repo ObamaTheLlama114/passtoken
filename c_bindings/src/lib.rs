@@ -4,8 +4,12 @@ use std::ffi::{c_char, c_int, CStr};
 pub struct Auth {}
 
 #[no_mangle]
-pub extern "C" fn init_auth(postgres_url: *mut c_char) -> *mut core::Auth {
+pub extern "C" fn init_auth(postgres_url: *mut c_char, redis_url: *mut c_char) -> *mut core::Auth {
     let postgres_url = match unsafe { CStr::from_ptr(postgres_url) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let redis_url = match unsafe { CStr::from_ptr(redis_url) }.to_str() {
         Ok(s) => s,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -13,7 +17,7 @@ pub extern "C" fn init_auth(postgres_url: *mut c_char) -> *mut core::Auth {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async { core::init_auth(postgres_url.to_string()).await });
+        .block_on(async { core::init_auth(postgres_url.to_string(), redis_url.to_string()).await });
     let auth = match auth {
         Ok(a) => a,
         Err(_) => return std::ptr::null_mut(),
@@ -103,17 +107,13 @@ pub extern "C" fn logout(auth: *mut core::Auth, token: *mut c_char) -> c_int {
 pub extern "C" fn update_user(
     auth: *mut core::Auth,
     token: *mut c_char,
-    filter: *mut c_char,
     email: *mut c_char,
     password: *mut c_char,
+    logout: bool,
 ) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
-    };
-    let filter = match unsafe { CStr::from_ptr(filter) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
     };
     let email = if email.is_null() {
         Some(
@@ -145,9 +145,9 @@ pub extern "C" fn update_user(
             core::update_user(
                 unsafe { &mut *auth },
                 token.to_string(),
-                filter.to_string(),
                 email,
                 password,
+                logout,
             )
             .await
         }) {
@@ -162,6 +162,7 @@ pub extern "C" fn admin_update_user(
     token: *mut c_char,
     email: *mut c_char,
     password: *mut c_char,
+    logout: bool,
 ) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
@@ -194,7 +195,14 @@ pub extern "C" fn admin_update_user(
         .build()
         .unwrap()
         .block_on(async {
-            core::admin_update_user(unsafe { &mut *auth }, token.to_string(), email, password).await
+            core::admin_update_user(
+                unsafe { &mut *auth },
+                token.to_string(),
+                email,
+                password,
+                logout,
+            )
+            .await
         }) {
         Ok(_) => 0,
         Err(_) => -4,
@@ -202,26 +210,17 @@ pub extern "C" fn admin_update_user(
 }
 
 #[no_mangle]
-pub extern "C" fn delete_user(
-    auth: *mut core::Auth,
-    token: *mut c_char,
-    filter: *mut c_char,
-) -> c_int {
+pub extern "C" fn delete_user(auth: *mut core::Auth, token: *mut c_char) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
         Err(_) => return -1,
-    };
-    let filter = match unsafe { CStr::from_ptr(filter) }.to_str() {
-        Ok(s) => s,
-        Err(_) => return -2,
     };
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
-        .block_on(async {
-            core::delete_user(unsafe { &mut *auth }, token.to_string(), filter.to_string()).await
-        }) {
+        .block_on(async { core::delete_user(unsafe { &mut *auth }, token.to_string()).await })
+    {
         Ok(_) => 0,
         Err(_) => -3,
     }
@@ -246,10 +245,10 @@ pub extern "C" fn admin_delete_user(auth: *mut core::Auth, filter: *mut c_char) 
 }
 
 #[no_mangle]
-pub extern "C" fn verify_token(auth: *mut core::Auth, token: *mut c_char) -> c_int {
+pub extern "C" fn verify_token(auth: *mut core::Auth, token: *mut c_char) -> *mut c_char {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return std::ptr::null_mut(),
     };
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -258,12 +257,13 @@ pub extern "C" fn verify_token(auth: *mut core::Auth, token: *mut c_char) -> c_i
         .block_on(async { core::verify_token(unsafe { &mut *auth }, token.to_string()).await })
     {
         Ok(result) => {
-            if result {
-                1
+            if result != "" {
+                let result = Box::into_raw(Box::new(result));
+                result as *mut c_char
             } else {
-                0
+                std::ptr::null_mut()
             }
         }
-        Err(_) => -2,
+        Err(_) => std::ptr::null_mut(),
     }
 }
