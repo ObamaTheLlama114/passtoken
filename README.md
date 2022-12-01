@@ -4,7 +4,7 @@ Passtoken is a lightweight authentication system that allows you to:
 
 1. Separate your authentication database from the rest of your data
 2. Be sure it wont crash on you (because its written in rust)
-3. Run it [standalone](#standalone) or [embed](#embedding) it into any [Rust](#rust), [C](#cc) (WIP), [Python](#python) (WIP) or [Javascript/Typescript](#tsjs) (WIP) project, or anywhere you can run [Web Assembly](#wasm) (WIP)
+3. Run it [standalone](#standalone) or [embed](#embedding) it into any [Rust](#rust), [C](#cc), [Python](#python) (WIP) or [Javascript/Typescript](#tsjs) (WIP) project, or anywhere you can run [Web Assembly](#wasm) (WIP)
 
 ## Using Passtoken
 
