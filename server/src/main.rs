@@ -1,15 +1,15 @@
+use actix_web::{
+    delete, get, patch, post,
+    web::{self, Data},
+    App, HttpResponse, HttpServer,
+};
+use core::*;
+use dotenv::dotenv;
 use std::{
     collections::HashMap,
     env,
     process::exit,
     sync::{Arc, Mutex},
-};
-use core::*;
-use dotenv::dotenv;
-use actix_web::{
-    delete, get, patch, post,
-    web::{self, Data},
-    App, HttpResponse, HttpServer,
 };
 
 #[actix_web::main]
@@ -43,6 +43,13 @@ async fn main() {
         .unwrap_or_else(|x| {
             println!("Could not initialize auth: {}", x.to_error_message());
             exit(1);
+        })
+        .token_expire_time(match env::var("TOKEN_EXPIRE_TIME") {
+            Ok(x) => Some(x.parse().unwrap_or_else(|x| {
+                println!("Could not parse TOKEN_EXPIRE_TIME: {}", x);
+                exit(1);
+            })),
+            Err(_) => None,
         }),
     ));
     // Create the server

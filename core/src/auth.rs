@@ -11,13 +11,25 @@ use crate::{
 pub struct Auth {
     redis: redis::Client,
     postgres: Pool<Postgres>,
+    pub token_expire_time: Option<usize>,
+}
+
+impl Auth {
+    pub fn token_expire_time(mut self, token_expire_time: Option<usize>) -> Self {
+        self.token_expire_time = token_expire_time;
+        self
+    }
 }
 
 pub async fn init_auth(postgres_url: String, redis_url: String) -> Result<Auth, AuthError> {
     let postgres = util::get_pool(postgres_url).await?;
     util::init_db(&postgres).await?;
     let redis = redis::Client::open(redis_url).or_else(|x| Err(AuthError::RedisError(x)))?;
-    Ok(Auth { redis, postgres })
+    Ok(Auth {
+        redis,
+        postgres,
+        token_expire_time: None,
+    })
 }
 
 pub async fn create_user(
@@ -209,10 +221,17 @@ pub async fn login(auth: &mut Auth, email: String, password: String) -> Result<S
     let (id, _, _, _) = get_user_by_email(auth, email).await?;
     let _ = auth
         .redis
-        .get_connection()
-        .or_else(|x| Err(AuthError::RedisError(x)))?
         .set(token.clone(), id)
         .or_else(|x| Err(AuthError::RedisError(x)))?;
+    match auth.token_expire_time {
+        Some(x) => {
+            let _ = auth
+                .redis
+                .expire(token.clone(), x)
+                .or_else(|x| Err(AuthError::RedisError(x)))?;
+        }
+        None => {}
+    }
     Ok(token)
 }
 
@@ -301,8 +320,19 @@ async fn verify_user(auth: &mut Auth, email: String, password: String) -> Result
 }
 
 pub async fn verify_token(auth: &mut Auth, token: String) -> Result<String, AuthError> {
-    match auth.redis.get::<_, Option<i32>>(token) {
-        Ok(Some(id)) => Ok(get_user_by_id(auth, id).await?.1),
+    match auth.redis.get::<_, Option<i32>>(token.clone()) {
+        Ok(Some(id)) => {
+            match auth.token_expire_time {
+                Some(x) => {
+                    let _ = auth
+                        .redis
+                        .expire(token.clone(), x)
+                        .or_else(|x| Err(AuthError::RedisError(x)))?;
+                }
+                None => {}
+            }
+            Ok(get_user_by_id(auth, id).await?.1)
+        }
         Ok(None) => Ok(String::from("")),
         Err(x) => Err(AuthError::RedisError(x)),
     }

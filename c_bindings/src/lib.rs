@@ -1,4 +1,4 @@
-use std::ffi::{c_char, c_int, CStr};
+use std::ffi::{c_char, c_int, c_ulong, CStr};
 
 fn get_error_code(err: core::AuthError) -> i8 {
     match err {
@@ -15,6 +15,17 @@ fn get_error_code(err: core::AuthError) -> i8 {
 
 #[repr(C)]
 pub struct Auth {}
+
+#[no_mangle]
+pub extern "C" fn set_token_expire_time(auth: *mut core::Auth, time: *mut c_ulong) {
+    unsafe {
+        if time.is_null() {
+            (*auth).token_expire_time = None;
+        } else {
+            (*auth).token_expire_time = Some(*time as usize);
+        }
+    }
+}
 
 #[no_mangle]
 pub extern "C" fn init_auth(postgres_url: *mut c_char, redis_url: *mut c_char) -> *mut core::Auth {

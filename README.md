@@ -20,10 +20,10 @@ Passtoken can be run [standalone](#standalone) or [embeded](#embedding) into oth
 
 ### Steps
 
-- Create a `.env` file in the `core` directory, and in that file set `DATABASE_URL` to the url of your postgres database.
+- Rename `core/.env.example` to `.env` and set `DATABASE_URL` to the url to your postgres database.
 - Run `cargo build --release -p server` to build a release binary.
 - The final binary will be located at `target/release/passtoken._` The file extension will be different depending on what operating system you build for.
-- When running the binary, make sure to create a `.env` file with `REDIS_URL` as the url to your redis database, and `POSTGRES_URL` as the url to your postgres database.
+- When running the binary, make sure to copy `.env.example` as `.env` and edit the file to set `REDIS_URL` as the url to your redis database, and `POSTGRES_URL` as the url to your postgres database, and optionally set `TOKEN_EXPIRE_TIME` as how long in seconds you want tokens to last after being used.
 
 ## Embedding
 
