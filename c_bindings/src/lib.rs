@@ -1,5 +1,18 @@
 use std::ffi::{c_char, c_int, CStr};
 
+fn get_error_code(err: core::AuthError) -> i8 {
+    match err {
+        core::AuthError::UserAlreadyExists => -1,
+        core::AuthError::UserDoesNotExist => -2,
+        core::AuthError::IncorrectUsernameOrPassword => -3,
+        core::AuthError::InvalidToken => -4,
+        core::AuthError::TokenDoesNotExist => -5,
+        core::AuthError::UnableToAquireTokenListLock => -6,
+        core::AuthError::PostgresError(_) => -7,
+        core::AuthError::RedisError(_) => -8,
+    }
+}
+
 #[repr(C)]
 pub struct Auth {}
 
@@ -33,11 +46,11 @@ pub extern "C" fn create_user(
 ) -> c_int {
     let email = match unsafe { CStr::from_ptr(email) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return -9,
     };
     let password = match unsafe { CStr::from_ptr(password) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -2,
+        Err(_) => return -9,
     };
 
     match tokio::runtime::Builder::new_multi_thread()
@@ -53,7 +66,7 @@ pub extern "C" fn create_user(
             .await
         }) {
         Ok(_) => 0,
-        Err(_) => -3,
+        Err(err) => get_error_code(err).into(),
     }
 }
 
@@ -95,11 +108,11 @@ pub extern "C" fn login(
 pub extern "C" fn logout(auth: *mut core::Auth, token: *mut c_char) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return -9,
     };
     match core::logout(unsafe { &mut *auth }, token.to_string()) {
         Ok(_) => 0,
-        Err(_) => -2,
+        Err(err) => get_error_code(err).into(),
     }
 }
 
@@ -113,13 +126,13 @@ pub extern "C" fn update_user(
 ) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return -9,
     };
     let email = if email.is_null() {
         Some(
             match unsafe { CStr::from_ptr(email) }.to_str() {
                 Ok(s) => s,
-                Err(_) => return -3,
+                Err(_) => return -9,
             }
             .to_string(),
         )
@@ -130,7 +143,7 @@ pub extern "C" fn update_user(
         Some(
             match unsafe { CStr::from_ptr(password) }.to_str() {
                 Ok(s) => s,
-                Err(_) => return -4,
+                Err(_) => return -9,
             }
             .to_string(),
         )
@@ -152,7 +165,7 @@ pub extern "C" fn update_user(
             .await
         }) {
         Ok(_) => 0,
-        Err(_) => -5,
+        Err(err) => get_error_code(err).into(),
     }
 }
 
@@ -166,13 +179,13 @@ pub extern "C" fn admin_update_user(
 ) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return -9,
     };
     let email = if email.is_null() {
         Some(
             match unsafe { CStr::from_ptr(email) }.to_str() {
                 Ok(s) => s,
-                Err(_) => return -2,
+                Err(_) => return -9,
             }
             .to_string(),
         )
@@ -183,7 +196,7 @@ pub extern "C" fn admin_update_user(
         Some(
             match unsafe { CStr::from_ptr(password) }.to_str() {
                 Ok(s) => s,
-                Err(_) => return -3,
+                Err(_) => return -9,
             }
             .to_string(),
         )
@@ -205,7 +218,7 @@ pub extern "C" fn admin_update_user(
             .await
         }) {
         Ok(_) => 0,
-        Err(_) => -4,
+        Err(err) => get_error_code(err).into(),
     }
 }
 
@@ -213,7 +226,7 @@ pub extern "C" fn admin_update_user(
 pub extern "C" fn delete_user(auth: *mut core::Auth, token: *mut c_char) -> c_int {
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return -9,
     };
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -222,7 +235,7 @@ pub extern "C" fn delete_user(auth: *mut core::Auth, token: *mut c_char) -> c_in
         .block_on(async { core::delete_user(unsafe { &mut *auth }, token.to_string()).await })
     {
         Ok(_) => 0,
-        Err(_) => -3,
+        Err(err) => get_error_code(err).into(),
     }
 }
 
@@ -230,7 +243,7 @@ pub extern "C" fn delete_user(auth: *mut core::Auth, token: *mut c_char) -> c_in
 pub extern "C" fn admin_delete_user(auth: *mut core::Auth, filter: *mut c_char) -> c_int {
     let filter = match unsafe { CStr::from_ptr(filter) }.to_str() {
         Ok(s) => s,
-        Err(_) => return -1,
+        Err(_) => return -9,
     };
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -240,7 +253,7 @@ pub extern "C" fn admin_delete_user(auth: *mut core::Auth, filter: *mut c_char) 
             core::admin_delete_user(unsafe { &mut *auth }, filter.to_string()).await
         }) {
         Ok(_) => 0,
-        Err(_) => -2,
+        Err(err) => get_error_code(err).into(),
     }
 }
 
