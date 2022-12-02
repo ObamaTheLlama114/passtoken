@@ -1,4 +1,4 @@
-.env
+**/.env
 Cargo.lock
 /target
 /include/bindings.h
