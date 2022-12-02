@@ -35,7 +35,7 @@ For embeding into rust, it is as simple as including the library in your project
 
 To build the C/C++ bindings, compile the `c_bindings` project with `cargo build --release -p c_bindings`
 
-The bindings will be in the `include` directory, and the library file will be in `target/release/libc_bindings._` depending on what operating system you build for and what type of library you build. By default the c_bindings compile to a static library. To change it to a dynamic library, in `c_bindings/Cargo.toml` change `["staticlib"]` to `["cdylib"]`
+The headers will be in the `include` directory, and the library file will be in `target/release/libc_bindings._` The file extension will be different depending on what operating system you build for and what type of library you build. By default the c_bindings compile to a static library. To change it to a dynamic library, in `c_bindings/Cargo.toml` change `["staticlib"]` to `["cdylib"]`
 
 ### Python
 
