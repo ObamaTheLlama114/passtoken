@@ -1,4 +1,7 @@
-use std::ffi::{c_char, c_int, c_ulong, CStr};
+use std::{
+    ffi::{c_char, c_int, c_ulong, CStr},
+    mem,
+};
 
 fn get_error_code(err: core::AuthError) -> i8 {
     match err {
@@ -16,6 +19,36 @@ fn get_error_code(err: core::AuthError) -> i8 {
 #[repr(C)]
 pub struct Auth {}
 
+#[repr(C)]
+pub enum StatusCode {
+    Ok,
+    Err,
+}
+
+#[repr(C)]
+pub struct AuthResult {
+    status_code: StatusCode,
+    result: AuthUnion,
+}
+
+#[repr(C)]
+pub union AuthUnion {
+    ok: *mut core::Auth,
+    err: c_int,
+}
+
+#[repr(C)]
+pub struct CharResult {
+    status_code: StatusCode,
+    result: CharUnion,
+}
+
+#[repr(C)]
+pub union CharUnion {
+    ok: *mut c_char,
+    err: i8,
+}
+
 #[no_mangle]
 pub extern "C" fn set_token_expire_time(auth: *mut core::Auth, time: *mut c_ulong) {
     unsafe {
@@ -28,14 +61,20 @@ pub extern "C" fn set_token_expire_time(auth: *mut core::Auth, time: *mut c_ulon
 }
 
 #[no_mangle]
-pub extern "C" fn init_auth(postgres_url: *mut c_char, redis_url: *mut c_char) -> *mut core::Auth {
+pub extern "C" fn init_auth(postgres_url: *mut c_char, redis_url: *mut c_char) -> AuthResult {
+    fn error(code: i8) -> AuthResult {
+        AuthResult {
+            status_code: StatusCode::Err,
+            result: AuthUnion { err: code.into() },
+        }
+    }
     let postgres_url = match unsafe { CStr::from_ptr(postgres_url) }.to_str() {
         Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+        Err(_) => return error(-9),
     };
     let redis_url = match unsafe { CStr::from_ptr(redis_url) }.to_str() {
         Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+        Err(_) => return error(-9),
     };
     let auth = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -44,9 +83,14 @@ pub extern "C" fn init_auth(postgres_url: *mut c_char, redis_url: *mut c_char) -
         .block_on(async { core::init_auth(postgres_url.to_string(), redis_url.to_string()).await });
     let auth = match auth {
         Ok(a) => a,
-        Err(_) => return std::ptr::null_mut(),
+        Err(err) => return error(get_error_code(err)),
     };
-    Box::into_raw(Box::new(auth))
+    AuthResult {
+        status_code: StatusCode::Ok,
+        result: AuthUnion {
+            ok: Box::into_raw(Box::new(auth)),
+        },
+    }
 }
 
 #[no_mangle]
@@ -86,14 +130,20 @@ pub extern "C" fn login(
     auth: *mut core::Auth,
     email: *mut c_char,
     password: *mut c_char,
-) -> *mut c_char {
+) -> CharResult {
+    fn error(code: i8) -> CharResult {
+        CharResult {
+            status_code: StatusCode::Err,
+            result: CharUnion { err: code.into() },
+        }
+    }
     let email = match unsafe { CStr::from_ptr(email) }.to_str() {
         Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+        Err(_) => return error(-9),
     };
     let password = match unsafe { CStr::from_ptr(password) }.to_str() {
         Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+        Err(_) => return error(-9),
     };
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -107,11 +157,24 @@ pub extern "C" fn login(
             )
             .await
         }) {
-        Ok(token) => {
-            let token = Box::into_raw(Box::new(token));
-            token as *mut c_char
-        }
-        Err(_) => std::ptr::null_mut(),
+        Ok(token) => CharResult {
+            status_code: StatusCode::Ok,
+            result: CharUnion {
+                ok: {
+                    let mut chars: Vec<c_char> =
+                        token.chars().map(|x| x as c_char).collect::<Vec<c_char>>();
+                    chars.push('\0' as c_char);
+                    unsafe {
+                        let ptr = libc::malloc(mem::size_of::<i8>() * chars.len()) as *mut c_char;
+                        for i in 0..chars.len() {
+                            *ptr.offset(i.try_into().unwrap()) = chars[i];
+                        }
+                        ptr
+                    }
+                },
+            },
+        },
+        Err(err) => error(get_error_code(err)),
     }
 }
 
@@ -269,10 +332,16 @@ pub extern "C" fn admin_delete_user(auth: *mut core::Auth, filter: *mut c_char) 
 }
 
 #[no_mangle]
-pub extern "C" fn verify_token(auth: *mut core::Auth, token: *mut c_char) -> *mut c_char {
+pub extern "C" fn verify_token(auth: *mut core::Auth, token: *mut c_char) -> CharResult {
+    fn error(code: i8) -> CharResult {
+        CharResult {
+            status_code: StatusCode::Err,
+            result: CharUnion { err: code.into() },
+        }
+    }
     let token = match unsafe { CStr::from_ptr(token) }.to_str() {
         Ok(s) => s,
-        Err(_) => return std::ptr::null_mut(),
+        Err(_) => return error(-9),
     };
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -282,12 +351,28 @@ pub extern "C" fn verify_token(auth: *mut core::Auth, token: *mut c_char) -> *mu
     {
         Ok(result) => {
             if result != "" {
-                let result = Box::into_raw(Box::new(result));
-                result as *mut c_char
+                CharResult {
+                    status_code: StatusCode::Ok,
+                    result: CharUnion {
+                        ok: {
+                            let mut chars: Vec<c_char> =
+                                result.chars().map(|x| x as c_char).collect::<Vec<c_char>>();
+                            chars.push('\0' as c_char);
+                            unsafe {
+                                let ptr =
+                                    libc::malloc(mem::size_of::<i8>() * chars.len()) as *mut c_char;
+                                for i in 0..chars.len() {
+                                    *ptr.offset(i.try_into().unwrap()) = chars[i];
+                                }
+                                ptr
+                            }
+                        },
+                    },
+                }
             } else {
-                std::ptr::null_mut()
+                error(1)
             }
         }
-        Err(_) => std::ptr::null_mut(),
+        Err(err) => error(get_error_code(err)),
     }
 }
