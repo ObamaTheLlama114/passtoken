@@ -1,0 +1,152 @@
+{
+  "db": "PostgreSQL",
+  "041a7aa51739fc08c22b9cbac582e9329d47015eac0aaa94e2b30b56a317208c": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        },
+        {
+          "name": "email",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "passwordhash",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "salt",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        SELECT *\n        FROM users\n        WHERE email = $1;\n        "
+  },
+  "231c3095c9057398360d12fa5301f0599e31b17e4b688c9da514a1459c6fb0e8": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "CREATE TABLE IF NOT EXISTS \"users\" (\n                id INT GENERATED ALWAYS AS IDENTITY,\n                email TEXT NOT NULL UNIQUE,\n                passwordhash TEXT NOT NULL,\n                salt TEXT NOT NULL\n            );"
+  },
+  "4f80f9baaa4b96ae8f3a5b6cf7b6c6c93f050516e474a711b666ce5c2b754b7c": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            UPDATE \"users\"\n            SET passwordhash = $1,\n                salt         = $2\n            WHERE email      = $3;\n            "
+  },
+  "5a5ee17529f3c0acf07ee6464eb3d5f2fd169b45b7f27775b0c29edb87a6dabf": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        INSERT INTO users ( email, passwordhash, salt )\n        VALUES ( $1, $2, $3 );\n        "
+  },
+  "724eb419baa6c460b70437633b2bb8a92f507039f2d8673be14f3c7d10eddfa3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text"
+        ]
+      }
+    },
+    "query": "\n        DELETE FROM \"users\"\n        WHERE email = $1;\n        "
+  },
+  "9030a038d23cbe26cb0d95ad846f31395191ff6be3c7b19032adbe1eeb40836e": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": []
+      }
+    },
+    "query": "CREATE TABLE IF NOT EXISTS \"users\" (\n        id INT GENERATED ALWAYS AS IDENTITY,\n        email TEXT NOT NULL UNIQUE,\n        passwordhash TEXT NOT NULL,\n        salt TEXT NOT NULL\n        );"
+  },
+  "9a94c46df82c4ba703350a8475149e61451a8f6df481972ccf12a379a6a30eb9": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int4"
+        },
+        {
+          "name": "email",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "passwordhash",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "salt",
+          "ordinal": 3,
+          "type_info": "Text"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Left": [
+          "Int4"
+        ]
+      }
+    },
+    "query": "\n        SELECT *\n        FROM users\n        WHERE id = $1;\n        "
+  },
+  "e6307b8b8f4434ad5717e409b8cc17198c3327de099d468f429c382546152d88": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Left": [
+          "Text",
+          "Text"
+        ]
+      }
+    },
+    "query": "\n            UPDATE \"users\"\n            SET email   = $1\n            WHERE email = $2;\n            "
+  }
+}
